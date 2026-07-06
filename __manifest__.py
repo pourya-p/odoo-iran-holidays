@@ -22,6 +22,7 @@ Features:
 
     "depends": [
         "hr",
+        "hr_holidays",
     ],
 
     "data": [

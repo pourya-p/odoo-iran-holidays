@@ -27,7 +27,14 @@ class HolidayImportService(models.AbstractModel):
         """
 
         if not calendars:
-            calendars = self.env["resource.calendar"].search([])
+            calendars = self.env["resource.calendar"].search([
+                ("company_id", "=", self.env.company.id),
+            ])
+
+            if not calendars:
+                raise UserError(
+                    "هیچ ساعت کاری برای شرکت فعال یافت نشد."
+                )
 
         data = self._fetch_month(year, month)
 
@@ -85,15 +92,19 @@ class HolidayImportService(models.AbstractModel):
 
         holidays = []
 
-        for day in data.get("values", []):
+        for event in data.get("data", {}).get("event_list", []):
 
-            if not day.get("dayHoliday"):
+            if not event.get("is_holiday"):
                 continue
 
             holidays.append({
-                "id": day["id"],
-                "name": day["dayTitle"],
-                "date": day["miladiDate"],
+                "id": event["id"],
+                "name": event["title"],
+                "date": (
+                    f"{event['gregorian_year']:04d}-"
+                    f"{event['gregorian_month']:02d}-"
+                    f"{event['gregorian_day']:02d}"
+                ),
             })
 
         return holidays
@@ -132,3 +143,22 @@ class HolidayImportService(models.AbstractModel):
                     leave.write(values)
                 else:
                     Leave.create(values)
+
+    @api.model
+    def cron_import_current_month(self):
+        """
+        Imports public holidays for the current Jalali month.
+        """
+        import jdatetime
+
+        today = jdatetime.date.today()
+
+        calendars = self.env["resource.calendar"].search([
+            ("company_id", "=", self.env.company.id),
+        ])
+
+        self.import_month(
+            year=today.year,
+            month=today.month,
+            calendars=calendars,
+        )

@@ -51,8 +51,23 @@ class ImportIranHolidaysWizard(models.TransientModel):
 
     note = fields.Html(
         string="راهنما",
-        compute="_compute_note",
         sanitize=False,
+        readonly=True,
+        default=lambda self: """
+            <div class="alert alert-info mb-0">
+                <strong>راهنما</strong>
+                <br/>
+                اگر گزینه <strong>«اعمال روی همه ساعات کاری»</strong> فعال باشد،
+                تعطیلات برای تمام ساعات کاری <strong>شرکت فعال</strong> ایجاد یا
+                به‌روزرسانی می‌شوند.
+                <br/><br/>
+                اگر قصد دارید تعطیلات فقط برای ساعات کاری خاصی اعمال شوند،
+                این گزینه را غیرفعال کرده و یک یا چند ساعت کاری را انتخاب کنید.
+                <br/><br/>
+                برای اعمال تعطیلات در شرکت دیگر، ابتدا شرکت فعال را از منوی انتخاب
+                شرکت تغییر دهید.
+            </div>
+        """,
     )
 
     # -------------------------------------------------------------------------
@@ -78,29 +93,6 @@ class ImportIranHolidaysWizard(models.TransientModel):
         # TODO:
         # Calculate current Jalali month automatically.
         return 1
-
-    # -------------------------------------------------------------------------
-    # Compute Methods
-    # -------------------------------------------------------------------------
-
-    @api.depends()
-    def _compute_note(self):
-        """
-        Displays a help message in the wizard.
-        """
-
-        for wizard in self:
-            wizard.note = """
-                <div class="alert alert-info mb-0">
-                    <strong>راهنما</strong>
-                    <br/>
-                    اگر گزینه <strong>«اعمال روی همه ساعات کاری»</strong> فعال باشد،
-                    تعطیلات برای تمام ساعات کاری موجود در سیستم ایجاد یا به‌روزرسانی می‌شوند.
-                    <br/><br/>
-                    در غیر این صورت، می‌توانید یک یا چند ساعت کاری را انتخاب کنید تا
-                    تعطیلات فقط روی همان‌ها اعمال شوند.
-                </div>
-            """
 
     # -------------------------------------------------------------------------
     # Constraints
@@ -130,7 +122,14 @@ class ImportIranHolidaysWizard(models.TransientModel):
         self.ensure_one()
 
         if self.apply_all_calendars:
-            calendars = self.env["resource.calendar"].search([])
+            calendars = self.env["resource.calendar"].search([
+                ("company_id", "=", self.env.company.id),
+            ])
+
+            if not calendars:
+                raise UserError(
+                    "هیچ ساعت کاری برای شرکت فعال یافت نشد."
+                )
         else:
             calendars = self.calendar_ids
 
