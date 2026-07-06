@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 
 from odoo import api, fields, models
-from odoo.exceptions import ValidationError
+from odoo.exceptions import UserError
 
 
 class ImportIranHolidaysWizard(models.TransientModel):
     _name = "import.iran.holidays.wizard"
-    _description = "Import Iranian Public Holidays"
+    _description = "Import Iranian Public Holidays Wizard"
 
     year = fields.Integer(
         string="سال شمسی",
@@ -14,10 +14,24 @@ class ImportIranHolidaysWizard(models.TransientModel):
         default=lambda self: self._default_year(),
     )
 
-    month = fields.Integer(
+    month = fields.Selection(
+        selection=[
+            ("1", "فروردین"),
+            ("2", "اردیبهشت"),
+            ("3", "خرداد"),
+            ("4", "تیر"),
+            ("5", "مرداد"),
+            ("6", "شهریور"),
+            ("7", "مهر"),
+            ("8", "آبان"),
+            ("9", "آذر"),
+            ("10", "دی"),
+            ("11", "بهمن"),
+            ("12", "اسفند"),
+        ],
         string="ماه",
         required=True,
-        default=lambda self: self._default_month(),
+        default=lambda self: str(self._default_month()),
     )
 
     apply_all_calendars = fields.Boolean(
@@ -27,48 +41,92 @@ class ImportIranHolidaysWizard(models.TransientModel):
     )
 
     calendar_ids = fields.Many2many(
-        "resource.calendar",
+        comodel_name="resource.calendar",
         relation="holiday_import_calendar_rel",
         column1="wizard_id",
         column2="calendar_id",
         string="ساعات کاری",
+        help="در صورتی که گزینه «اعمال روی همه ساعات کاری» غیرفعال باشد، تعطیلات فقط روی ساعات کاری انتخاب‌شده اعمال می‌شوند.",
     )
 
     note = fields.Html(
+        string="راهنما",
         compute="_compute_note",
         sanitize=False,
     )
 
+    # -------------------------------------------------------------------------
+    # Defaults
+    # -------------------------------------------------------------------------
+
     @api.model
     def _default_year(self):
-        # بعداً از روی تاریخ شمسی امروز محاسبه می‌شود
+        """
+        Returns the default Jalali year.
+        """
+
+        # TODO:
+        # Calculate current Jalali year automatically.
         return 1405
 
     @api.model
     def _default_month(self):
-        # بعداً از روی تاریخ شمسی امروز محاسبه می‌شود
+        """
+        Returns the default Jalali month.
+        """
+
+        # TODO:
+        # Calculate current Jalali month automatically.
         return 1
+
+    # -------------------------------------------------------------------------
+    # Compute Methods
+    # -------------------------------------------------------------------------
 
     @api.depends()
     def _compute_note(self):
+        """
+        Displays a help message in the wizard.
+        """
+
         for wizard in self:
             wizard.note = """
-            <div class="alert alert-info mb-0">
-                <strong>راهنما</strong><br/>
-                در صورت فعال بودن گزینه <b>«اعمال روی همه ساعات کاری»</b>،
-                تعطیلات برای تمام ساعات کاری موجود در سیستم ایجاد یا به‌روزرسانی خواهد شد.
-                <br/><br/>
-                در غیر این صورت می‌توانید یک یا چند ساعت کاری را انتخاب کنید.
-            </div>
+                <div class="alert alert-info mb-0">
+                    <strong>راهنما</strong>
+                    <br/>
+                    اگر گزینه <strong>«اعمال روی همه ساعات کاری»</strong> فعال باشد،
+                    تعطیلات برای تمام ساعات کاری موجود در سیستم ایجاد یا به‌روزرسانی می‌شوند.
+                    <br/><br/>
+                    در غیر این صورت، می‌توانید یک یا چند ساعت کاری را انتخاب کنید تا
+                    تعطیلات فقط روی همان‌ها اعمال شوند.
+                </div>
             """
+
+    # -------------------------------------------------------------------------
+    # Constraints
+    # -------------------------------------------------------------------------
 
     @api.constrains("month")
     def _check_month(self):
+        """
+        Validates the selected month.
+        """
+
         for wizard in self:
-            if wizard.month < 1 or wizard.month > 12:
-                raise ValidationError("ماه باید عددی بین ۱ تا ۱۲ باشد.")
+            month = int(wizard.month)
+
+            if month < 1 or month > 12:
+                raise UserError("ماه انتخاب‌شده معتبر نیست.")
+
+    # -------------------------------------------------------------------------
+    # Actions
+    # -------------------------------------------------------------------------
 
     def action_import(self):
+        """
+        Imports holidays into the selected working schedules.
+        """
+
         self.ensure_one()
 
         if self.apply_all_calendars:
@@ -77,13 +135,13 @@ class ImportIranHolidaysWizard(models.TransientModel):
             calendars = self.calendar_ids
 
             if not calendars:
-                raise ValidationError(
+                raise UserError(
                     "حداقل یک ساعت کاری را انتخاب کنید."
                 )
 
         self.env["holiday.import.service"].import_month(
             year=self.year,
-            month=self.month,
+            month=int(self.month),
             calendars=calendars,
         )
 
